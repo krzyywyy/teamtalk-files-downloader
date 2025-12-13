@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+
+# Konfiguracje i profile użytkownika
+profiles/
+channel_profiles/
+
+# Środowiska wirtualne
+venv/
+.venv/
+
+# Pliki SDK / binaria
+TeamTalk_DLL/
+tt5sdk_v5.*.7z
+
+# Pliki tymczasowe/edytora
+.vscode/
+.idea/
+*.log
+
