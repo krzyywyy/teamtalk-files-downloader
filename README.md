@@ -4,6 +4,9 @@ Bot dla TeamTalk 5, który po komendzie **„pobierz pliki”** pobiera wszystki
 z jednego lub wielu kanałów na serwerze i zapisuje je na dysku w folderach
 nazwanych tak jak kanały.
 
+> Wszystko w tym repozytorium zostało wygenerowane przez **Codex** (agentyczny asystent programistyczny OpenAI),
+> a wszystkie prompty / wymagania zostały przygotowane przez użytkownika **krzywy**.
+
 Bot korzysta z TeamTalk SDK (`TeamTalk_DLL`) oraz wrappera Pythona (`TeamTalkPy`).
 
 ## Funkcje
@@ -30,11 +33,14 @@ Bot korzysta z TeamTalk SDK (`TeamTalk_DLL`) oraz wrappera Pythona (`TeamTalkPy`
 
 - Windows,
 - Python 3.8+,
+- serwer TeamTalk 5, do którego masz dane logowania,
+- uprawnienie na serwerze TT: możliwość pobierania plików z kanałów (USERRIGHT_DOWNLOAD_FILES),
 - TeamTalk SDK:
   - katalog `TeamTalk_DLL` z `TeamTalk5.dll`, `TeamTalk5.lib`, `TeamTalk.h`,
   - katalog `TeamTalkPy` z wrapperem `TeamTalk5.py`,
 - zależności Pythona:
-  - tylko standardowa biblioteka (`ctypes`, `argparse`, `json`, itp.).
+  - tylko standardowa biblioteka (`ctypes`, `argparse`, `json`, itp.),
+  - **nie trzeba instalować dodatkowych paczek z PyPI**.
 
 ## Struktura repozytorium
 
@@ -48,17 +54,44 @@ Bot korzysta z TeamTalk SDK (`TeamTalk_DLL`) oraz wrappera Pythona (`TeamTalkPy`
 │   ├── TeamTalk5.py
 │   └── ...
 ├── tt_downloader_bot.py          # główny kod bota
-├── tt-downloader-bot.py          # launcher (python tt-downloader-bot.py)
-├── profiles/                     # profile serwera (JSON)
-└── channel_profiles/             # profile kanałów (JSON)
+├── launcher.py                   # launcher (python launcher.py)
+├── profiles/                     # profile serwera (JSON, tworzone przy użyciu bota)
+└── channel_profiles/             # profile kanałów (JSON, tworzone przy użyciu bota)
 ```
 
-## Uruchamianie
+## Szybki start (GitHub → uruchomienie)
+
+1. Sklonuj repozytorium:
+
+   ```bash
+   git clone https://github.com/TWOJ_LOGIN/TT-Downloader-Bot.git
+   cd TT-Downloader-Bot
+   ```
+
+   (podmień `TWOJ_LOGIN` i nazwę repozytorium na własne).
+
+2. Upewnij się, że w katalogu `TeamTalk_DLL/` jest `TeamTalk5.dll` odpowiednia dla Twojej platformy (w repo znajduje się wersja 64-bit dla Windows).
+
+3. Upewnij się, że masz zainstalowanego Pythona 3.8+:
+
+   ```bash
+   python --version
+   ```
+
+4. Uruchom bota:
+
+   ```bash
+   python launcher.py
+   ```
+
+   Przy pierwszym uruchomieniu najlepiej stworzyć profil serwera (patrz niżej).
+
+## Uruchamianie – tryb interaktywny (rekomendowany)
 
 Standardowo używamy launchera:
 
 ```bash
-python tt-downloader-bot.py
+python launcher.py
 ```
 
 Jeśli uruchomisz **bez parametrów**, bot odpali **interaktywne menu**:
@@ -135,7 +168,7 @@ pobierz pliki
 Możesz ją wysłać:
 
 - **prywatnie** do bota – bot odpowiada na PW,
-- na **kanale**.
+- na **kanale** – bot odpowiada na kanale.
 
 Po komendzie:
 
@@ -156,14 +189,14 @@ Po komendzie:
 Możesz też uruchomić bota z parametrami, np.:
 
 ```bash
-python tt-downloader-bot.py \
-  --host 127.0.0.1 \
-  --tcp-port 10333 \
-  --udp-port 10333 \
-  --username moj_login \
-  --password moje_haslo \
-  --nickname "TT Downloader Bot" \
-  --channel-path "/Główny/Pliki" \
+python launcher.py ^
+  --host 127.0.0.1 ^
+  --tcp-port 10333 ^
+  --udp-port 10333 ^
+  --username moj_login ^
+  --password moje_haslo ^
+  --nickname "TT Downloader Bot" ^
+  --channel-path "/Główny/Pliki" ^
   --output-dir "./pliki"
 ```
 
@@ -174,4 +207,4 @@ W tym trybie bot działa w trybie `single` – pobiera tylko z kanału startoweg
 - Bot wymaga uprawnień do pobierania plików na serwerze TeamTalk (USERRIGHT_DOWNLOAD_FILES).
 - Bot nie usuwa plików z serwera – tylko je pobiera.
 - Katalogi `profiles/` i `channel_profiles/` są tworzone automatycznie.
-
+- Pamiętaj o licencji TeamTalk SDK – ten bot korzysta z bibliotek dostarczonych przez BearWare.dk.
