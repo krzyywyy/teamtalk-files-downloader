@@ -1,0 +1,13 @@
+{
+  "name": "example_server",
+  "host": "127.0.0.1",
+  "tcp_port": 10333,
+  "udp_port": 10333,
+  "username": "your_username",
+  "password": "",
+  "nickname": "TT Downloader Bot",
+  "base_channel_path": "/Root",
+  "base_channel_password": "",
+  "encrypted": false,
+  "output_dir": "./downloads"
+}

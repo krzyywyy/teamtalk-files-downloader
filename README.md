@@ -1,210 +1,112 @@
 # TT Downloader Bot
 
-Bot dla TeamTalk 5, który po komendzie **„pobierz pliki”** pobiera wszystkie pliki
-z jednego lub wielu kanałów na serwerze i zapisuje je na dysku w folderach
-nazwanych tak jak kanały.
+A TeamTalk 5 bot that downloads all files from one or more server channels when
+you send the command `download files`. Downloaded files are saved to disk in
+folders named after the channels.
 
-> Wszystko w tym repozytorium zostało wygenerowane przez **Codex** (agentyczny asystent programistyczny OpenAI),
-> a wszystkie prompty / wymagania zostały przygotowane przez użytkownika **krzywy**.
+## Features
 
-Bot korzysta z TeamTalk SDK (`TeamTalk_DLL`) oraz wrappera Pythona (`TeamTalkPy`).
+- Connects to a TeamTalk 5 server and joins a configured "base" channel
+- Supports multiple server profiles (host, ports, credentials, SSL, output dir)
+- Supports multiple channel-selection modes:
+  - Single channel (base channel only)
+  - Manual list of channels (saved as a channel profile)
+  - Automatic crawl of all channels on the server (asks for passwords when needed)
+- Saves each channel's files into its own folder
+- Progress notifications every 10 files (configurable in code)
 
-## Funkcje
+## Requirements
 
-- logowanie na serwer TT5 i dołączanie do zadanego kanału startowego,
-- obsługa wielu profili serwera (host, porty, login, hasła),
-- obsługa profili kanałów do pobrania (lista ścieżek kanałów + hasła),
-- tryb ręczny:
-  - wybierasz z jakich kanałów mają być pobrane pliki,
-  - możesz dodać dowolną liczbę kanałów,
-- tryb automatyczny:
-  - bot sam przechodzi po wszystkich kanałach na serwerze,
-  - jeśli kanał wymaga hasła, bot pyta o nie w wiadomości,
-- pobieranie plików z każdego kanału do osobnego folderu (nazwa kanału),
-- informacja:
-  - co 10 plików (łącznie),
-  - po zakończeniu każdego kanału,
-  - po zakończeniu wszystkich kanałów,
-- komenda `pobierz pliki`:
-  - jeśli napiszesz ją **prywatnie** do bota, bot odpowiada prywatnie,
-  - jeśli napiszesz ją na **kanale**, bot odpowiada na kanale.
+- Windows
+- Python 3.8+
+- TeamTalk 5 server credentials
+- TeamTalk user permission to download files (`USERRIGHT_DOWNLOAD_FILES`)
+- TeamTalk 5 SDK DLL (`TeamTalk5.dll`) available locally (not included)
 
-## Wymagania
-
-- Windows,
-- Python 3.8+,
-- serwer TeamTalk 5, do którego masz dane logowania,
-- uprawnienie na serwerze TT: możliwość pobierania plików z kanałów (USERRIGHT_DOWNLOAD_FILES),
-- TeamTalk SDK:
-  - katalog `TeamTalk_DLL` z `TeamTalk5.dll`, `TeamTalk5.lib`, `TeamTalk.h`,
-  - katalog `TeamTalkPy` z wrapperem `TeamTalk5.py`,
-- zależności Pythona:
-  - tylko standardowa biblioteka (`ctypes`, `argparse`, `json`, itp.),
-  - **nie trzeba instalować dodatkowych paczek z PyPI**.
-
-## Struktura repozytorium
+## Repository Layout
 
 ```text
 .
-├── TeamTalk_DLL/
-│   ├── TeamTalk5.dll
-│   ├── TeamTalk5.lib
-│   └── TeamTalk.h
-├── TeamTalkPy/
-│   ├── TeamTalk5.py
-│   └── ...
-├── tt_downloader_bot.py          # główny kod bota
-├── launcher.py                   # launcher (python launcher.py)
-├── profiles/                     # profile serwera (JSON, tworzone przy użyciu bota)
-└── channel_profiles/             # profile kanałów (JSON, tworzone przy użyciu bota)
+|-- TeamTalk_DLL/
+|   `-- README.md                  # where to put TeamTalk5.dll (not committed)
+|-- TeamTalkPy/                    # Python wrapper for TeamTalk (from TeamTalk SDK)
+|-- tt_downloader_bot.py           # bot implementation + interactive setup
+`-- launcher.py                    # entrypoint (recommended)
 ```
 
-## Szybki start (GitHub → uruchomienie)
+## Setup
 
-1. Sklonuj repozytorium:
+1. Clone the repository.
+2. Install Python (3.8+).
+3. Obtain the TeamTalk 5 SDK from BearWare.dk and copy at least:
+   - `TeamTalk5.dll` into `TeamTalk_DLL/`
 
-   ```bash
-   git clone https://github.com/TWOJ_LOGIN/TT-Downloader-Bot.git
-   cd TT-Downloader-Bot
-   ```
-
-   (podmień `TWOJ_LOGIN` i nazwę repozytorium na własne).
-
-2. Upewnij się, że w katalogu `TeamTalk_DLL/` jest `TeamTalk5.dll` odpowiednia dla Twojej platformy (w repo znajduje się wersja 64-bit dla Windows).
-
-3. Upewnij się, że masz zainstalowanego Pythona 3.8+:
-
-   ```bash
-   python --version
-   ```
-
-4. Uruchom bota:
-
-   ```bash
-   python launcher.py
-   ```
-
-   Przy pierwszym uruchomieniu najlepiej stworzyć profil serwera (patrz niżej).
-
-## Uruchamianie – tryb interaktywny (rekomendowany)
-
-Standardowo używamy launchera:
+## Run (Interactive Mode - Recommended)
 
 ```bash
 python launcher.py
 ```
 
-Jeśli uruchomisz **bez parametrów**, bot odpali **interaktywne menu**:
+If you start without arguments, the bot launches an interactive menu:
 
-1. Utwórz profil serwera  
-2. Wczytaj profil serwera  
-3. Usuń profil serwera  
-4. Wyjdź  
+1. Create server profile
+2. Load server profile
+3. Delete server profile
+4. Exit
 
-### Profil serwera
+Server profiles are saved to `profiles/*.json` (ignored by git).
+Example JSON files are available in `examples/`.
 
-Profil serwera zawiera:
+After loading a server profile you can choose how channels are selected:
 
-- nazwę profilu (np. `mój_serwer`),
-- adres serwera (host/IP),
-- port TCP i UDP,
-- nazwę użytkownika i hasło,
-- nick, którym bot będzie się logował,
-- ścieżkę kanału startowego (np. `/Główny`),
-- hasło kanału startowego (opcjonalne),
-- informację, czy używać szyfrowania (SSL),
-- katalog wyjściowy, gdzie zapisywać pliki.
+1. Use/create a saved channel profile
+2. Enter channels manually (not saved)
+3. Auto-download from all channels (password prompts via chat)
+4. Delete channel profile
+5. Start the bot with the current selection
+6. Back
 
-Profile zapisywane są w katalogu `profiles/` jako pliki `.json`.
+Channel profiles are saved to `channel_profiles/<server_profile>.json` (ignored by git).
+Example JSON files are available in `examples/`.
 
-### Profil kanałów
+## Chat Command
 
-Po wczytaniu profilu serwera otrzymasz drugie menu:
-
-1. Użyj/utwórz profil kanałów do pobierania  
-2. Wpisz kanały ręcznie (bez zapisywania)  
-3. Automatyczne pobieranie ze wszystkich kanałów (hasła w PW)  
-4. Usuń profil kanałów  
-5. Uruchom bota z aktualnym wyborem  
-6. Wróć do menu profili serwera  
-
-#### Tryb „profil kanałów”
-
-- Jeśli profil kanałów dla tego serwera istnieje, zobaczysz listę kanałów.
-- Możesz potwierdzić użycie istniejącego profilu lub zbudować nowy.
-- Kanał opisujesz:
-  - ścieżka kanału (np. `/Główny/Pliki`),
-  - hasło kanału (jeśli jest wymagane).
-
-Profil jest zapisywany w `channel_profiles/<nazwa_profilu_serwera>.json`.
-
-#### Tryb „ręczny”
-
-Jak wyżej, ale lista kanałów jest używana tylko w tej sesji – nie zapisuje się na dysku.
-
-#### Tryb „auto_all”
-
-- Bot pobiera listę wszystkich kanałów z serwera.
-- Dla każdego kanału:
-  - jeśli nie wymaga hasła – od razu próbuje pobrać pliki,
-  - jeśli wymaga hasła – pyta o nie wiadomością (PW lub kanałową – w zależności skąd przyszło `pobierz pliki`).
-- Odpowiedź:
-  - samo hasło – bot zapisuje i używa,
-  - `pomiń` / `skip` / ENTER – kanał jest pomijany.
-
-## Komenda „pobierz pliki”
-
-Po uruchomieniu bota i zalogowaniu na serwer:
-
-1. Bot dołącza do kanału startowego z profilu.
-2. Czeka biernie na komendę.
-
-Komenda ma postać **dokładnie**:
+Once connected and joined to the base channel, send the command (case-insensitive):
 
 ```text
-pobierz pliki
+download files
 ```
 
-Możesz ją wysłać:
+You can send it either:
 
-- **prywatnie** do bota – bot odpowiada na PW,
-- na **kanale** – bot odpowiada na kanale.
+- as a private message to the bot (the bot replies privately), or
+- in a channel (the bot replies in the channel).
 
-Po komendzie:
+In `auto_all` mode, if a channel likely requires a password, the bot will ask you
+to reply with the password only, or `skip` to skip that channel.
 
-- bot przygotuje kolejkę kanałów (wg wybranego trybu),
-- dla każdego kanału:
-  - wypisze, że zaczyna pobierać z danego kanału,
-  - jeśli kanał nie ma plików – poinformuje i przejdzie dalej,
-  - jeśli są pliki – pobierze je do folderu o nazwie kanału (w katalogu wyjściowym),
-  - po **zakończeniu kanału** wyśle informację:
-    - na PW lub na kanale – zależnie od tego, skąd wywołano komendę,
-- co 10 pobranych plików globalnie bot wysyła informację:
-  - `Pobrano łącznie X plików...`,
-- po zakończeniu wszystkich kanałów:
-  - `Skończyłem pobieranie ze wszystkich kanałów. Łącznie pobrano X plików.`
-
-## Tryb CLI (bez profili)
-
-Możesz też uruchomić bota z parametrami, np.:
+## Run (CLI Mode - No Profiles)
 
 ```bash
 python launcher.py ^
   --host 127.0.0.1 ^
   --tcp-port 10333 ^
   --udp-port 10333 ^
-  --username moj_login ^
-  --password moje_haslo ^
+  --username your_login ^
+  --password your_password ^
   --nickname "TT Downloader Bot" ^
-  --channel-path "/Główny/Pliki" ^
-  --output-dir "./pliki"
+  --channel-path "/Root/Files" ^
+  --output-dir "./downloads"
 ```
 
-W tym trybie bot działa w trybie `single` – pobiera tylko z kanału startowego po komendzie `pobierz pliki`.
+In CLI mode the bot runs in `single` mode (base channel only).
 
-## Uwaga
+## Notes
 
-- Bot wymaga uprawnień do pobierania plików na serwerze TeamTalk (USERRIGHT_DOWNLOAD_FILES).
-- Bot nie usuwa plików z serwera – tylko je pobiera.
-- Katalogi `profiles/` i `channel_profiles/` są tworzone automatycznie.
-- Pamiętaj o licencji TeamTalk SDK – ten bot korzysta z bibliotek dostarczonych przez BearWare.dk.
+- This bot downloads files from the server; it does not delete remote files.
+- The TeamTalk SDK is proprietary. Make sure you comply with BearWare's license.
+  See `THIRD_PARTY_NOTICES.md`.
+
+## License
+
+MIT (see `LICENSE`).

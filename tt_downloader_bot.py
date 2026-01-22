@@ -3,9 +3,9 @@ import getpass
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
-# Upewniamy się, że można zaimportować lokalny moduł TeamTalkPy
+# Ensure we can import the local TeamTalkPy wrapper.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
@@ -13,24 +13,33 @@ if SCRIPT_DIR not in sys.path:
 PROFILE_DIR = os.path.join(SCRIPT_DIR, "profiles")
 CHANNEL_PROFILE_DIR = os.path.join(SCRIPT_DIR, "channel_profiles")
 
-from TeamTalkPy.TeamTalk5 import (  # type: ignore
-    TeamTalk,
-    Channel,
-    RemoteFile,
-    FileTransfer,
-    FileTransferStatus,
-    TextMessage,
-    TextMsgType,
-    buildTextMessage,
-)
+try:
+    from TeamTalkPy.TeamTalk5 import (  # type: ignore
+        TeamTalk,
+        Channel,
+        RemoteFile,
+        FileTransfer,
+        FileTransferStatus,
+        TextMessage,
+        TextMsgType,
+        buildTextMessage,
+    )
+except Exception as exc:
+    raise SystemExit(
+        "Failed to import the TeamTalk Python wrapper.\n"
+        "Make sure you have TeamTalk 5 SDK installed and that TeamTalk5.dll is available.\n"
+        "Recommended setup: copy TeamTalk5.dll into TeamTalk_DLL/.\n"
+        "See README.md and TeamTalk_DLL/README.md.\n"
+        f"Original error: {exc}"
+    ) from exc
 
 
 def sanitize_for_fs(name: str) -> str:
-    """Proste czyszczenie nazwy pod system plików."""
+    """Basic filename sanitization for Windows."""
     invalid = '<>:"/\\|?*'
     cleaned = "".join(c for c in name if c not in invalid)
     cleaned = cleaned.strip().rstrip(". ")
-    return cleaned or "kanał"
+    return cleaned or "channel"
 
 
 class TTDownloaderBot(TeamTalk):
@@ -65,15 +74,16 @@ class TTDownloaderBot(TeamTalk):
 
         self.running = True
         self.logged_in = False
-        self.channel_id: Optional[int] = None  # kanał, w którym bot „siedzi”
+        # The "base" channel where the bot stays and listens for the command.
+        self.channel_id: Optional[int] = None
         self.join_cmd_id: Optional[int] = None
 
         # (channel_id, remote_filename) -> local_path
         self._expected_downloads: Dict[Tuple[int, str], str] = {}
-        self._completed_downloads: set[Tuple[int, str]] = set()
+        self._completed_downloads: Set[Tuple[int, str]] = set()
         self._downloads_started = False
 
-        # kolejka kanałów do pobrania
+        # Queue of channels to process.
         self._download_queue: List[Dict[str, object]] = []
         self._current_channel_id: Optional[int] = None
         self._channel_paths: Dict[int, str] = {}
@@ -82,18 +92,18 @@ class TTDownloaderBot(TeamTalk):
         self._total_completed_files: int = 0
         self._notify_every: int = 10
 
-        # użytkownik/kanał, który poprosił o pobieranie
+        # Who requested the download (so we can reply in the same place).
         self._request_user_id: Optional[int] = None
         self._request_channel_id: Optional[int] = None
-        self._request_origin: Optional[str] = None  # "private" lub "channel"
+        self._request_origin: Optional[str] = None  # "private" or "channel"
 
-        # w trybie auto_all: oczekujemy hasła do kanału
+        # In auto_all mode we may need to ask for a channel password.
         self._awaiting_password_channel_id: Optional[int] = None
 
-    # --- główny loop ---
+    # --- main loop ---
 
     def start(self) -> int:
-        print(f"Łączenie z serwerem {self.host}:{self.tcp_port} (encrypted={self.encrypted})...")
+        print(f"Connecting to {self.host}:{self.tcp_port} (encrypted={self.encrypted})...")
         ok = self.connect(
             self.host,
             self.tcp_port,
@@ -103,22 +113,22 @@ class TTDownloaderBot(TeamTalk):
             self.encrypted,
         )
         if not ok:
-            print("Nie udało się zainicjować połączenia (Connect zwrócił False).")
+            print("Failed to initialize connection (connect() returned False).")
             return 1
 
         try:
             while self.running:
                 self.runEventLoop(500)
         except KeyboardInterrupt:
-            print("\nPrzerwano przez użytkownika (Ctrl+C).")
+            print("\nInterrupted by user (Ctrl+C).")
         finally:
             self.disconnect()
         return 0
 
-    # --- callbacki TeamTalk ---
+    # --- TeamTalk callbacks ---
 
     def onConnectSuccess(self) -> None:
-        print("Połączono z serwerem, logowanie...")
+        print("Connected, logging in...")
         cmd_id = self.doLogin(
             self.nickname,
             self.username,
@@ -126,15 +136,15 @@ class TTDownloaderBot(TeamTalk):
             "TTDownloaderBot",
         )
         if cmd_id <= 0:
-            print("Nie udało się zainicjować logowania (doLogin zwrócił <= 0).")
+            print("Failed to initialize login (doLogin returned <= 0).")
             self.running = False
 
     def onConnectFailed(self) -> None:
-        print("Połączenie z serwerem nieudane.")
+        print("Connection failed.")
         self.running = False
 
     def onConnectionLost(self) -> None:
-        print("Utracono połączenie z serwerem.")
+        print("Connection lost.")
         self.running = False
 
     def onCmdError(self, cmdId: int, errmsg) -> None:
@@ -143,29 +153,29 @@ class TTDownloaderBot(TeamTalk):
             msg = errmsg.szErrorMsg
         except Exception:
             msg = ""
-        print(f"Błąd komendy (id={cmdId}): {msg}")
+        print(f"Command error (id={cmdId}): {msg}")
         if cmdId == self.join_cmd_id:
-            print("Nie udało się dołączyć do kanału startowego.")
+            print("Failed to join the base channel.")
             self.running = False
 
     def onCmdMyselfLoggedIn(self, userid: int, useraccount) -> None:
         self.logged_in = True
-        print("Zalogowano na serwer. Dołączanie do kanału startowego...")
+        print("Logged in. Joining base channel...")
         self._join_target_channel()
 
     def onCmdMyselfLoggedOut(self) -> None:
-        print("Wylogowano z serwera.")
+        print("Logged out.")
         self.running = False
 
     def onCmdSuccess(self, cmdId: int) -> None:
         if cmdId == self.join_cmd_id:
-            print("Dołączono do kanału startowego. Czekam na wiadomość 'pobierz pliki' (prywatna lub kanałowa).")
+            print("Joined base channel. Waiting for the message 'download files' (private or channel).")
 
     def onCmdUserTextMessage(self, textmessage: TextMessage) -> None:
         print(
-            f"Odebrano wiadomość tekstową: typ={textmessage.nMsgType}, "
+            f"Received text message: type={textmessage.nMsgType}, "
             f"from={textmessage.nFromUserID}, to={textmessage.nToUserID}, "
-            f"kanał={textmessage.nChannelID}, treść='{textmessage.szMessage}'"
+            f"channel={textmessage.nChannelID}, content='{textmessage.szMessage}'"
         )
 
         content_raw = textmessage.szMessage or ""
@@ -177,7 +187,7 @@ class TTDownloaderBot(TeamTalk):
         except Exception:
             my_user_id = 0
 
-        # ignorujemy własne wiadomości
+        # Ignore our own messages.
         if from_user_id == my_user_id:
             return
 
@@ -190,12 +200,12 @@ class TTDownloaderBot(TeamTalk):
             and textmessage.nChannelID != 0
         )
 
-        # Oczekiwanie na hasło do kanału (tryb auto_all)
+        # Waiting for a channel password (auto_all).
         if self._awaiting_password_channel_id is not None:
             chan_id = self._awaiting_password_channel_id
             chan_path = self._channel_paths.get(chan_id, f"channel_{chan_id}")
 
-            # Hasło musi przyjść z tego samego miejsca, skąd przyszło "pobierz pliki"
+            # Password must come from the same place as the original request.
             if self._request_origin == "private":
                 if not origin_private or from_user_id != self._request_user_id:
                     return
@@ -203,23 +213,23 @@ class TTDownloaderBot(TeamTalk):
                 if not origin_channel or textmessage.nChannelID != self._request_channel_id:
                     return
 
-            if content in ("pomin", "pomiń", "pomiń kanał", "skip", ""):
-                self._send_to_request_target(f"Pomijam kanał '{chan_path}' (bez hasła).")
+            if content in ("skip", "next", ""):
+                self._send_to_request_target(f"Skipping channel '{chan_path}' (no password provided).")
                 self._awaiting_password_channel_id = None
                 self._start_next_channel_download()
                 return
 
-            # Zapamiętaj hasło w zadaniu (na przyszłość)
+            # Store the password in the queue entry and continue.
             for task in self._download_queue:
                 if int(task.get("id", -1)) == chan_id:
                     task["password"] = content_raw.strip()
-            self._send_to_request_target(f"Hasło do kanału '{chan_path}' zapisane.")
+            self._send_to_request_target(f"Password saved for channel '{chan_path}'.")
             self._awaiting_password_channel_id = None
             self._start_downloads_for_channel(chan_id, chan_path)
             return
 
-        # Komenda uruchomienia pobierania – reagujemy na każdą wiadomość z treścią "pobierz pliki"
-        if content != "pobierz pliki":
+        # Start command.
+        if content != "download files":
             return
 
         if origin_private:
@@ -231,18 +241,18 @@ class TTDownloaderBot(TeamTalk):
             self._request_user_id = None
             self._request_channel_id = textmessage.nChannelID
         else:
-            # ignorujemy inne typy wiadomości
+            # Ignore other message types.
             return
 
         if self._downloads_started or self._download_queue:
-            self._send_to_request_target("Pobieranie plików już trwa lub jest w toku.")
+            self._send_to_request_target("Downloads are already running.")
             return
 
         if self.channel_id is None:
-            self._send_to_request_target("Nie jestem jeszcze w kanale. Spróbuj ponownie za chwilę.")
+            self._send_to_request_target("I'm not in a channel yet. Please try again in a moment.")
             return
 
-        # Przygotuj kolejkę kanałów do pobrania
+        # Build the download queue.
         self._expected_downloads.clear()
         self._completed_downloads.clear()
         self._channel_paths.clear()
@@ -259,14 +269,14 @@ class TTDownloaderBot(TeamTalk):
             self._prepare_manual_queue()
 
         if not self._download_queue:
-            self._send_to_request_target("Brak skonfigurowanych kanałów do pobrania.")
+            self._send_to_request_target("No channels configured for download.")
             return
 
         self._downloads_started = True
         first = self._download_queue[0]
         self._send_to_request_target(
-            f"Zaczynam pobieranie z {len(self._download_queue)} kanału/kanałów. "
-            f"Najpierw zajmę się kanałem '{first.get('path')}'."
+            f"Starting downloads from {len(self._download_queue)} channel(s). "
+            f"First up: '{first.get('path')}'."
         )
         self._start_next_channel_download()
 
@@ -282,30 +292,30 @@ class TTDownloaderBot(TeamTalk):
         status = ft.nStatus
         if status == FileTransferStatus.FILETRANSFER_ACTIVE:
             print(
-                f"Pobieranie {filename}: {ft.nTransferred}/{ft.nFileSize} bajtów",
+                f"Downloading {filename}: {ft.nTransferred}/{ft.nFileSize} bytes",
                 end="\r",
                 flush=True,
             )
             return
-        # Końcowe statusy
+        # Final statuses.
         if key in self._completed_downloads:
             return
 
         if status == FileTransferStatus.FILETRANSFER_FINISHED:
-            print(f"\nPobieranie zakończone: {filename} -> {local_path}")
+            print(f"\nDownload finished: {filename} -> {local_path}")
         elif status == FileTransferStatus.FILETRANSFER_ERROR:
-            print(f"\nBłąd podczas pobierania pliku: {filename}")
+            print(f"\nError while downloading file: {filename}")
         elif status == FileTransferStatus.FILETRANSFER_CLOSED:
-            print(f"\nTransfer zamknięty: {filename}")
+            print(f"\nTransfer closed: {filename}")
 
         self._completed_downloads.add(key)
         self._total_completed_files += 1
         self._channel_completed_counts[chan_id] = self._channel_completed_counts.get(chan_id, 0) + 1
 
-        # Co n plików wyślij informację do użytkownika
+        # Notify every N files.
         if self._total_completed_files % self._notify_every == 0:
             self._send_to_request_target(
-                f"Pobrano łącznie {self._total_completed_files} plików..."
+                f"Downloaded a total of {self._total_completed_files} files..."
             )
 
         pending = self._channel_pending_counts.get(chan_id)
@@ -313,7 +323,7 @@ class TTDownloaderBot(TeamTalk):
         if pending is not None and completed is not None and completed >= pending:
             chan_path = self._channel_paths.get(chan_id, f"channel_{chan_id}")
             self._send_to_request_target(
-                f"Zakończyłem pobieranie plików z kanału '{chan_path}'."
+                f"Finished downloading files from channel '{chan_path}'."
             )
             if self._current_channel_id == chan_id:
                 self._start_next_channel_download()
@@ -322,28 +332,28 @@ class TTDownloaderBot(TeamTalk):
 
     def _join_target_channel(self) -> None:
         if not self.channel_path:
-            print("Nie podano ścieżki kanału startowego.")
+            print("No base channel path provided.")
             self.running = False
             return
 
         chan_id = self.getChannelIDFromPath(self.channel_path)
         if chan_id <= 0:
-            print(f"Nie znaleziono kanału o ścieżce: {self.channel_path}")
+            print(f"Channel not found for path: {self.channel_path}")
             self.running = False
             return
 
         self.channel_id = chan_id
         self.join_cmd_id = self.doJoinChannelByID(self.channel_id, self.channel_password)
         if self.join_cmd_id <= 0:
-            print("Nie udało się zainicjować dołączania do kanału startowego.")
+            print("Failed to start joining the base channel.")
             self.running = False
 
     def _prepare_manual_queue(self) -> None:
-        """Buduje kolejkę kanałów na podstawie ustawień ręcznych."""
+        """Build a channel queue for single/manual_list modes."""
         self._download_queue = []
 
         if self.channel_mode == "single":
-            # tylko kanał startowy
+            # Base channel only.
             chan_id = self.channel_id or self.getChannelIDFromPath(self.channel_path)
             if not chan_id or chan_id <= 0:
                 return
@@ -352,14 +362,14 @@ class TTDownloaderBot(TeamTalk):
             self._download_queue.append({"id": chan_id, "path": path, "password": self.channel_password})
             return
 
-        # manual_list: lista kanałów z konfiguracji
+        # manual_list: channels configured in the profile.
         for ch in self.channels_to_download:
             path = ch.get("path", "").strip()
             if not path:
                 continue
             chan_id = self.getChannelIDFromPath(path)
             if chan_id <= 0:
-                msg = f"Nie znaleziono kanału o ścieżce: {path}"
+                msg = f"Channel not found for path: {path}"
                 print(msg)
                 self._send_to_request_target(msg)
                 continue
@@ -369,7 +379,7 @@ class TTDownloaderBot(TeamTalk):
             )
 
     def _prepare_auto_queue(self) -> None:
-        """Buduje kolejkę dla trybu auto_all (wszystkie kanały na serwerze)."""
+        """Build a channel queue for auto_all mode (all server channels)."""
         self._download_queue = []
         channels = self.getServerChannels()
         for ch in channels:
@@ -394,8 +404,8 @@ class TTDownloaderBot(TeamTalk):
         if not self._download_queue:
             if self._downloads_started:
                 self._send_to_request_target(
-                    f"Skończyłem pobieranie ze wszystkich kanałów. "
-                    f"Łącznie pobrano {self._total_completed_files} plików."
+                    f"Finished downloading from all channels. "
+                    f"Total files downloaded: {self._total_completed_files}."
                 )
             self._downloads_started = False
             self._current_channel_id = None
@@ -409,14 +419,14 @@ class TTDownloaderBot(TeamTalk):
 
         if self.channel_mode == "auto_all" and task.get("requires_password") and not task.get("password"):
             self._send_to_request_target(
-                f"Kanał '{path}' prawdopodobnie ma hasło. "
-                "Odpowiedz w wiadomości podając samo hasło "
-                "albo 'pomiń', aby pominąć ten kanał."
+                f"Channel '{path}' likely requires a password. "
+                "Reply with the password only, "
+                "or type 'skip' to skip this channel."
             )
             self._awaiting_password_channel_id = chan_id
             return
 
-        self._send_to_request_target(f"Pobieram pliki z kanału '{path}'.")
+        self._send_to_request_target(f"Downloading files from channel '{path}'.")
         self._start_downloads_for_channel(chan_id, path)
 
     def _start_downloads_for_channel(self, channel_id: int, channel_path: str) -> None:
@@ -426,29 +436,29 @@ class TTDownloaderBot(TeamTalk):
 
         files = self.getChannelFiles(channel_id)
         if not files:
-            print(f"Kanał '{channel_path}' nie zawiera plików.")
+            print(f"Channel '{channel_path}' contains no files.")
             self._send_to_request_target(
-                f"Kanał '{channel_path}' nie zawiera plików. Przechodzę do kolejnego."
+                f"Channel '{channel_path}' contains no files. Moving on."
             )
             self._channel_pending_counts[channel_id] = 0
             self._channel_completed_counts[channel_id] = 0
             self._start_next_channel_download()
             return
 
-        print(f"Znaleziono {len(files)} plików w kanale '{channel_path}'.")
+        print(f"Found {len(files)} file(s) in channel '{channel_path}'.")
         started = 0
         for rf in files:
             filename = rf.szFileName or f"file_{rf.nFileID}"
             local_path = os.path.join(target_dir, filename)
-            print(f"Rozpoczynam pobieranie: {filename} -> {local_path}")
+            print(f"Starting download: {filename} -> {local_path}")
             key = (rf.nChannelID, filename)
             self._expected_downloads[key] = local_path
             transfer_id = self.doRecvFile(rf.nChannelID, rf.nFileID, local_path)
             if transfer_id > 0:
                 started += 1
             else:
-                print(f"  Nie udało się rozpocząć pobierania pliku: {filename}")
-                # traktuj jako zakończony z błędem
+                print(f"  Failed to start download for file: {filename}")
+                # Treat as completed with error.
                 self._completed_downloads.add(key)
 
         self._channel_pending_counts[channel_id] = started
@@ -456,7 +466,7 @@ class TTDownloaderBot(TeamTalk):
 
         if started == 0:
             self._send_to_request_target(
-                f"Nie udało się uruchomić transferów dla kanału '{channel_path}'. Przechodzę dalej."
+                f"Failed to start transfers for channel '{channel_path}'. Moving on."
             )
             self._start_next_channel_download()
 
@@ -501,7 +511,7 @@ class TTDownloaderBot(TeamTalk):
             self._send_channel_message(self._request_channel_id, text)
 
 
-# --- obsługa profili serwera i kanałów ---
+# --- server/channel profile helpers ---
 
 
 def _ensure_dirs() -> None:
@@ -583,62 +593,62 @@ def _prompt_int(prompt: str, default: int) -> int:
     try:
         return int(txt)
     except ValueError:
-        print("Nieprawidłowa liczba, używam wartości domyślnej.")
+        print("Invalid number, using the default value.")
         return default
 
 
 def _prompt_channels_interactive() -> List[Dict[str, str]]:
     channels: List[Dict[str, str]] = []
     while True:
-        print("\n1. Dodaj kanał do pobrania")
-        print("2. Przejdź dalej")
-        choice = input("Wybierz opcję [1/2]: ").strip() or "2"
+        print("\n1. Add a channel to download")
+        print("2. Continue")
+        choice = input("Choose an option [1/2]: ").strip() or "2"
         if choice == "1":
-            path = input("Ścieżka kanału (np. /Główny/Pliki): ").strip()
+            path = input("Channel path (e.g. /Root/Files): ").strip()
             if not path:
-                print("Ścieżka kanału nie może być pusta.")
+                print("Channel path cannot be empty.")
                 continue
-            password = getpass.getpass("Hasło kanału (ENTER jeśli brak): ")
+            password = getpass.getpass("Channel password (press ENTER if none): ")
             channels.append({"path": path, "password": password})
         elif choice == "2":
             break
         else:
-            print("Nieprawidłowy wybór.")
+            print("Invalid choice.")
     return channels
 
 
 def create_server_profile_interactive() -> Optional[Dict[str, object]]:
     _ensure_dirs()
-    print("=== Tworzenie profilu serwera ===")
-    name = input("Nazwa profilu serwera: ").strip()
+    print("=== Create server profile ===")
+    name = input("Server profile name: ").strip()
     if not name:
-        print("Nazwa profilu jest wymagana.")
+        print("Profile name is required.")
         return None
 
-    host = input("Adres serwera (np. 127.0.0.1): ").strip()
+    host = input("Server address (e.g. 127.0.0.1): ").strip()
     if not host:
-        print("Adres serwera jest wymagany.")
+        print("Server address is required.")
         return None
 
-    tcp_port = _prompt_int("Port TCP", 10333)
-    udp_port = _prompt_int("Port UDP", 10333)
+    tcp_port = _prompt_int("TCP port", 10333)
+    udp_port = _prompt_int("UDP port", 10333)
 
-    username = input("Nazwa użytkownika: ").strip()
+    username = input("Username: ").strip()
     if not username:
-        print("Nazwa użytkownika jest wymagana.")
+        print("Username is required.")
         return None
 
-    password = getpass.getpass("Hasło użytkownika (ENTER jeśli brak): ")
+    password = getpass.getpass("User password (press ENTER if none): ")
 
-    nickname = input(f"Nick (domyślnie '{username}'): ").strip() or username
+    nickname = input(f"Nickname (default '{username}'): ").strip() or username
 
-    base_channel_path = input("Ścieżka kanału startowego (np. /Główny): ").strip() or "/"
-    base_channel_password = getpass.getpass("Hasło kanału startowego (ENTER jeśli brak): ")
+    base_channel_path = input("Base channel path (e.g. /Root): ").strip() or "/"
+    base_channel_password = getpass.getpass("Base channel password (press ENTER if none): ")
 
-    enc_answer = input("Czy użyć szyfrowania (SSL)? [t/N]: ").strip().lower()
-    encrypted = enc_answer in ("t", "tak", "y", "yes", "1")
+    enc_answer = input("Use encryption (SSL)? [y/N]: ").strip().lower()
+    encrypted = enc_answer in ("y", "yes", "1", "true")
 
-    output_dir = input("Folder, gdzie zapisywać pliki (domyślnie bieżący): ").strip() or "."
+    output_dir = input("Output folder (default: current directory): ").strip() or "."
 
     profile: Dict[str, object] = {
         "name": name,
@@ -654,36 +664,36 @@ def create_server_profile_interactive() -> Optional[Dict[str, object]]:
         "output_dir": output_dir,
     }
     _save_server_profile(name, profile)
-    print(f"Zapisano profil serwera: {name}")
+    print(f"Saved server profile: {name}")
     return profile
 
 
 def choose_server_profile_interactive() -> Optional[Dict[str, object]]:
     profiles = _list_server_profiles()
     if not profiles:
-        print("Brak zapisanych profili serwera.")
+        print("No saved server profiles.")
         return None
 
-    print("=== Dostępne profile serwera ===")
+    print("=== Available server profiles ===")
     for idx, name in enumerate(profiles, start=1):
         print(f"{idx}. {name}")
 
-    choice_txt = input("Wybierz profil numerem (ENTER aby anulować): ").strip()
+    choice_txt = input("Select profile by number (press ENTER to cancel): ").strip()
     if not choice_txt:
         return None
     try:
         idx = int(choice_txt)
     except ValueError:
-        print("Nieprawidłowy numer.")
+        print("Invalid number.")
         return None
     if not (1 <= idx <= len(profiles)):
-        print("Nieprawidłowy numer.")
+        print("Invalid number.")
         return None
 
     name = profiles[idx - 1]
     profile = _load_server_profile(name)
     if not profile:
-        print("Nie udało się wczytać profilu.")
+        print("Failed to load profile.")
         return None
     return profile
 
@@ -691,27 +701,27 @@ def choose_server_profile_interactive() -> Optional[Dict[str, object]]:
 def delete_server_profile_interactive() -> None:
     profiles = _list_server_profiles()
     if not profiles:
-        print("Brak zapisanych profili serwera.")
+        print("No saved server profiles.")
         return
 
-    print("=== Usuwanie profilu serwera ===")
+    print("=== Delete server profile ===")
     for idx, name in enumerate(profiles, start=1):
         print(f"{idx}. {name}")
-    choice_txt = input("Wybierz profil do usunięcia numerem (ENTER aby anulować): ").strip()
+    choice_txt = input("Select profile to delete by number (press ENTER to cancel): ").strip()
     if not choice_txt:
         return
     try:
         idx = int(choice_txt)
     except ValueError:
-        print("Nieprawidłowy numer.")
+        print("Invalid number.")
         return
     if not (1 <= idx <= len(profiles)):
-        print("Nieprawidłowy numer.")
+        print("Invalid number.")
         return
     name = profiles[idx - 1]
     _delete_server_profile(name)
     _delete_channel_profile(name)
-    print(f"Profil '{name}' został usunięty.")
+    print(f"Profile '{name}' has been deleted.")
 
 
 def run_with_profile(profile: Dict[str, object]) -> int:
@@ -720,28 +730,28 @@ def run_with_profile(profile: Dict[str, object]) -> int:
     selected_mode: Optional[str] = None  # "manual_list", "auto_all", "single"
 
     while True:
-        print("\n=== Konfiguracja kanałów dla profilu ===")
-        print("1. Użyj/utwórz profil kanałów do pobierania")
-        print("2. Wpisz kanały ręcznie (bez zapisywania)")
-        print("3. Automatyczne pobieranie ze wszystkich kanałów (hasła w PW)")
-        print("4. Usuń profil kanałów")
-        print("5. Uruchom bota z aktualnym wyborem")
-        print("6. Wróć do menu profili serwera")
-        choice = input("Wybierz opcję [1-6]: ").strip()
+        print("\n=== Channel selection for this profile ===")
+        print("1. Use/create a saved channel profile")
+        print("2. Enter channels manually (do not save)")
+        print("3. Auto-download from all channels (password prompts via chat)")
+        print("4. Delete channel profile")
+        print("5. Start bot with current selection")
+        print("6. Back to server profile menu")
+        choice = input("Choose an option [1-6]: ").strip()
 
         if choice == "1":
             existing = _load_channel_profile(profile_name)
             if existing:
-                print("Znaleziono istniejący profil kanałów:")
+                print("Found an existing channel profile:")
                 for ch in existing:
-                    print(f" - {ch.get('path')} (hasło: {'tak' if ch.get('password') else 'nie'})")
-                ans = input("Użyć istniejącego profilu? [T/n]: ").strip().lower()
-                if ans in ("", "t", "tak", "y", "yes"):
+                    print(f" - {ch.get('path')} (password: {'yes' if ch.get('password') else 'no'})")
+                ans = input("Use existing profile? [Y/n]: ").strip().lower()
+                if ans in ("", "y", "yes"):
                     channels_for_run = existing
                     selected_mode = "manual_list"
-                    print("Używam istniejącego profilu kanałów.")
+                    print("Using existing channel profile.")
                     continue
-            # tworzymy nowy
+            # Create a new profile.
             channels_for_run = _prompt_channels_interactive()
             _save_channel_profile(profile_name, channels_for_run)
             selected_mode = "manual_list"
@@ -752,19 +762,19 @@ def run_with_profile(profile: Dict[str, object]) -> int:
             selected_mode = "auto_all"
         elif choice == "4":
             _delete_channel_profile(profile_name)
-            print("Profil kanałów został usunięty.")
+            print("Channel profile deleted.")
             if selected_mode == "manual_list":
                 channels_for_run = []
                 selected_mode = None
         elif choice == "5":
             if selected_mode is None:
-                # domyślnie tylko kanał startowy
+                # Default to base channel only.
                 selected_mode = "single"
             break
         elif choice == "6":
             return 0
         else:
-            print("Nieprawidłowy wybór.")
+            print("Invalid choice.")
 
     bot = TTDownloaderBot(
         host=str(profile["host"]),
@@ -785,37 +795,37 @@ def run_with_profile(profile: Dict[str, object]) -> int:
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Bot TeamTalk 5 pobierający pliki z kanału do folderu o nazwie kanału.",
+        description="TeamTalk 5 bot that downloads channel files into a folder named after the channel.",
     )
-    parser.add_argument("--host", required=True, help="Adres serwera TeamTalk.")
-    parser.add_argument("--tcp-port", type=int, default=10333, help="Port TCP serwera (domyślnie 10333).")
-    parser.add_argument("--udp-port", type=int, default=10333, help="Port UDP serwera (domyślnie 10333).")
-    parser.add_argument("--username", required=True, help="Nazwa użytkownika do logowania.")
-    parser.add_argument("--password", default="", help="Hasło użytkownika.")
+    parser.add_argument("--host", required=True, help="TeamTalk server address.")
+    parser.add_argument("--tcp-port", type=int, default=10333, help="Server TCP port (default: 10333).")
+    parser.add_argument("--udp-port", type=int, default=10333, help="Server UDP port (default: 10333).")
+    parser.add_argument("--username", required=True, help="Login username.")
+    parser.add_argument("--password", default="", help="Login password.")
     parser.add_argument(
         "--nickname",
         default="TT Downloader Bot",
-        help="Nick widoczny na serwerze (domyślnie 'TT Downloader Bot').",
+        help="Nickname visible on the server (default: 'TT Downloader Bot').",
     )
     parser.add_argument(
         "--channel-path",
         required=True,
-        help="Ścieżka kanału startowego, np. '/Główny/Pliki'.",
+        help="Base channel path, e.g. '/Root/Files'.",
     )
     parser.add_argument(
         "--channel-password",
         default="",
-        help="Hasło kanału startowego (jeśli jest wymagane).",
+        help="Base channel password (if required).",
     )
     parser.add_argument(
         "--encrypted",
         action="store_true",
-        help="Użyj połączenia szyfrowanego (SSL), jeśli serwer to wspiera.",
+        help="Use encrypted connection (SSL), if the server supports it.",
     )
     parser.add_argument(
         "--output-dir",
         default=".",
-        help="Katalog bazowy, w którym zostanie utworzony folder z nazwą kanału.",
+        help="Base output directory where per-channel folders will be created.",
     )
 
     return parser.parse_args(argv)
@@ -843,11 +853,11 @@ def interactive_setup() -> int:
     _ensure_dirs()
     while True:
         print("\n=== TT Downloader Bot ===")
-        print("1. Utwórz profil serwera")
-        print("2. Wczytaj profil serwera")
-        print("3. Usuń profil serwera")
-        print("4. Wyjdź")
-        choice = input("Wybierz opcję [1-4]: ").strip()
+        print("1. Create server profile")
+        print("2. Load server profile")
+        print("3. Delete server profile")
+        print("4. Exit")
+        choice = input("Choose an option [1-4]: ").strip()
 
         if choice == "1":
             profile = create_server_profile_interactive()
@@ -862,13 +872,13 @@ def interactive_setup() -> int:
         elif choice == "4" or choice == "":
             return 0
         else:
-            print("Nieprawidłowy wybór.")
+            print("Invalid choice.")
 
 
 if __name__ == "__main__":
-    # Bez argumentów – prosty tryb interaktywny.
+    # Without arguments: interactive mode.
     if len(sys.argv) == 1:
         raise SystemExit(interactive_setup())
 
-    # Z argumentami – tryb zaawansowany z parserem CLI.
+    # With arguments: CLI mode.
     raise SystemExit(main(sys.argv[1:]))
