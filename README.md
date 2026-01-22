@@ -24,18 +24,24 @@ folders named after the channels.
 - No external Python dependencies (standard library only)
 - TeamTalk 5 server credentials
 - TeamTalk user permission to download files (`USERRIGHT_DOWNLOAD_FILES`)
-- TeamTalk 5 SDK DLL (`TeamTalk5.dll`) available locally (not included)
+- TeamTalk 5 SDK files available locally (not included):
+  - `TeamTalk_DLL/TeamTalk5.dll`
+  - `TeamTalkPy/TeamTalk5.py` (Python wrapper)
 
 ## Repository Layout
 
 ```text
 .
-|-- TeamTalk_DLL/
-|   `-- README.md                  # where to put TeamTalk5.dll (not committed)
-|-- TeamTalkPy/                    # Python wrapper for TeamTalk (from TeamTalk SDK)
+|-- .github/
+|-- examples/
 |-- tt_downloader_bot.py           # bot implementation + interactive setup
 `-- launcher.py                    # entrypoint (recommended)
 ```
+
+Local-only dependencies (not included in this repo):
+
+- `TeamTalk_DLL/` (from TeamTalk SDK)
+- `TeamTalkPy/` (from TeamTalk SDK)
 
 ## Setup
 
@@ -47,8 +53,10 @@ folders named after the channels.
    python --version
    ```
 
-3. Obtain the TeamTalk 5 SDK from BearWare.dk and copy at least:
-   - `TeamTalk5.dll` into `TeamTalk_DLL/`
+4. Obtain the TeamTalk 5 SDK from BearWare.dk and copy these folders into the
+   repository root (they are intentionally ignored by git):
+   - `TeamTalk_DLL/` (must contain `TeamTalk5.dll`)
+   - `TeamTalkPy/` (must contain `TeamTalk5.py`)
 
 ## DLL Placement
 
@@ -128,6 +136,7 @@ In CLI mode the bot runs in `single` mode (base channel only).
 ## Troubleshooting
 
 - If you see "Failed to import the TeamTalk Python wrapper", make sure:
+  - `TeamTalkPy/TeamTalk5.py` exists, and
   - `TeamTalk_DLL/TeamTalk5.dll` exists, and
   - you're running the bot from the repository root folder, and
   - the DLL matches your Python architecture (x64 vs x86).

@@ -7,7 +7,7 @@ Thanks for considering contributing!
 - Keep changes small and focused.
 - Prefer Windows-compatible solutions (this project targets TeamTalk on Windows).
 - Do not commit secrets or local profiles (`profiles/`, `channel_profiles/` are ignored).
-- Do not commit TeamTalk SDK binaries (`TeamTalk_DLL/*.dll`, etc. are ignored).
+- Do not commit TeamTalk SDK files (`TeamTalk_DLL/` and `TeamTalkPy/` are ignored).
 
 ## Development
 

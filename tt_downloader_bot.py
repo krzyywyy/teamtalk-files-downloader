@@ -27,9 +27,11 @@ try:
 except Exception as exc:
     raise SystemExit(
         "Failed to import the TeamTalk Python wrapper.\n"
-        "Make sure you have TeamTalk 5 SDK installed and that TeamTalk5.dll is available.\n"
-        "Recommended setup: copy TeamTalk5.dll into TeamTalk_DLL/.\n"
-        "See README.md and TeamTalk_DLL/README.md.\n"
+        "Make sure you have the TeamTalk 5 SDK available locally.\n"
+        "Expected local files:\n"
+        "  - TeamTalkPy/TeamTalk5.py\n"
+        "  - TeamTalk_DLL/TeamTalk5.dll\n"
+        "See README.md.\n"
         f"Original error: {exc}"
     ) from exc
 

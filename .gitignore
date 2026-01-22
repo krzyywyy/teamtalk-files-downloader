@@ -9,11 +9,9 @@ channel_profiles/
 venv/
 .venv/
 
-# TeamTalk SDK binaries (do not commit)
-TeamTalk_DLL/*.dll
-TeamTalk_DLL/*.lib
-TeamTalk_DLL/*.h
-TeamTalk_DLL/*.txt
+# TeamTalk SDK (not included / do not commit)
+TeamTalk_DLL/
+TeamTalkPy/
 tt5sdk_v5.*.7z
 
 # Editor/temp files

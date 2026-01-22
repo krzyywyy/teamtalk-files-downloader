@@ -1,16 +1,14 @@
 # Third-Party Notices
 
-This repository includes or depends on third-party software.
+This project depends on third-party software.
 
 ## TeamTalk SDK / TeamTalkPy
 
 The TeamTalk 5 SDK and its components are (c) BearWare.dk and are licensed
 separately from this project.
 
-This project uses the TeamTalk Python wrapper in `TeamTalkPy/`. The header of
-`TeamTalkPy/TeamTalk5.py` states it is part of the TeamTalk SDK and that use of
-the file (or its compiled unit) requires a TeamTalk SDK License Key issued by
-BearWare.dk.
+This project uses the TeamTalk DLL and the TeamTalk Python wrapper which are
+distributed as part of the TeamTalk SDK.
 
-Make sure you obtain the TeamTalk SDK from BearWare.dk and comply with its
-license terms.
+These components are proprietary and are not included in this repository. You
+must obtain the TeamTalk SDK from BearWare.dk and comply with its license terms.
