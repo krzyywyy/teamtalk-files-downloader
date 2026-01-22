@@ -1,5 +1,7 @@
 # TT Downloader Bot
 
+![CI](https://github.com/krzyywyy/teamtalk-files-downloader/actions/workflows/ci.yml/badge.svg)
+
 A TeamTalk 5 bot that downloads all files from one or more server channels when
 you send the command `download files`. Downloaded files are saved to disk in
 folders named after the channels.
@@ -19,6 +21,7 @@ folders named after the channels.
 
 - Windows
 - Python 3.8+
+- No external Python dependencies (standard library only)
 - TeamTalk 5 server credentials
 - TeamTalk user permission to download files (`USERRIGHT_DOWNLOAD_FILES`)
 - TeamTalk 5 SDK DLL (`TeamTalk5.dll`) available locally (not included)
@@ -38,8 +41,23 @@ folders named after the channels.
 
 1. Clone the repository.
 2. Install Python (3.8+).
+3. Verify Python is available:
+
+   ```bash
+   python --version
+   ```
+
 3. Obtain the TeamTalk 5 SDK from BearWare.dk and copy at least:
    - `TeamTalk5.dll` into `TeamTalk_DLL/`
+
+## DLL Placement
+
+On Windows, the TeamTalk Python wrapper loads `TeamTalk5.dll` from:
+
+- the current working directory, and
+- `TeamTalk_DLL/` (relative to this repository)
+
+Make sure the DLL architecture matches your Python interpreter (x64 vs x86).
 
 ## Run (Interactive Mode - Recommended)
 
@@ -100,6 +118,19 @@ python launcher.py ^
 ```
 
 In CLI mode the bot runs in `single` mode (base channel only).
+
+## Security Notes
+
+- Server/channel profiles saved by the interactive setup may contain passwords.
+- These files are stored under `profiles/` and `channel_profiles/` and are ignored by git.
+  Do not share them.
+
+## Troubleshooting
+
+- If you see "Failed to import the TeamTalk Python wrapper", make sure:
+  - `TeamTalk_DLL/TeamTalk5.dll` exists, and
+  - you're running the bot from the repository root folder, and
+  - the DLL matches your Python architecture (x64 vs x86).
 
 ## Notes
 
